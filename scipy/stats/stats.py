@@ -4274,22 +4274,144 @@ def _perm_test(x, y, stat, ind_test, compute_distance, reps=1000):
         # calculate p-value
         pvalue += ((perm_stat >= stat) * (1/reps))
 
-    # correct for a p_value of 0. This is because, with bootstrapping
-    # permutations, a value of 0 is incorrect
-    if pvalue == 0:
-        pvalue = 1 / reps
-
     return pvalue, null_dist
+
+
+def _fast_mgc_stat(x, y, test_statistic, compute_distance, fast_sub_samples):
+    r"""
+    Helper function that calculates the MGC stat. See above for use.
+
+    Parameters
+    ----------
+    x, y : array_like
+        `x` and `y` are be :math:`n \times p` and :math:`n \times q` data
+        matrices.
+    test_statistic : callable
+        A function that computes the test statistic.
+    compute_distance : callable
+        A function that computes the distance or similarity among the samples
+        within each data matrix.
+
+    Returns
+    -------
+    sigma : float
+        Computed standard deviation used to calculate the p-value.
+    mu : float
+        Computed mean used to calculate the p-value.
+    """
+    # calculate the fast MGC pvalue
+    stat_sub, n_samples = _sub_sample(x, y, _mgc_stat, compute_distance,
+                                      fast_sub_samples)
+    sigma, mu = _approx_null(n_samples, stat_sub)
+    return sigma, mu
+
+
+def _sub_sample(x, y, test_stat, compute_distance, fast_sub_samples):
+    r"""
+    Sub samples the data to calculate the sub sampled test statistic.
+
+    Parameters
+    ----------
+    x, y : array_like
+        `x` and `y` are be :math:`n \times p` and :math:`n \times q` data
+        matrices.
+    test_stat : callable
+        The function that calculates the test statistic.
+    compute_distance : callable
+        A function that computes the distance or similarity among the samples
+        within each data matrix.
+    fast_sub_samples : int
+        Specifies the number of sub samples. The value of `sub_sample` must be
+        greater than 10.
+
+    Returns
+    -------
+    stat_sub : float
+        The sub sampled test statistic.
+    n_samples : int
+        The ratio of the total samples and `fast_sub_samples`
+    """
+    total_samples = x.shape[0]
+    n_samples = total_samples // fast_sub_samples
+
+    # if full data size (total_samples) is not more than 4 times of sub
+    # samples, split to 4 samples. Too few samples will fail the normal
+    # approximation and cause the test to be invalid
+    if total_samples < 4 * fast_sub_samples:
+        msg = ("The total number of samples is no more than 4 times the "
+               "number of sub samples. Split into 4 samples. Too few samples "
+               "will fail the normal approximation and cause the test to be "
+               "invalid.")
+        warnings.warn(msg, RuntimeWarning)
+        fast_sub_samples = total_samples // 4
+        n_samples = 4
+
+    stat_sub = np.zeros(n_samples) # observed statistic by sub sampling
+
+    # calculate sub sampled test statistic
+    permy = np.random.permutation(y)
+    for i in range(n_samples):
+        subx = x[(fast_sub_samples * i):(fast_sub_samples * (i+1)), :]
+        suby = permy[(fast_sub_samples * i):(fast_sub_samples * (i+1)), :]
+
+        stat_sub[i] = test_stat(subx, suby, compute_distance)[0]
+
+    return stat_sub, n_samples
+
+
+def _approx_null(n_samples, stat_sub):
+    r"""
+    Approximates the null distribution of the p-value calculation.
+
+    Parameters
+    ----------
+    stat_sub : float
+        The sub sampled test statistic.
+    n_samples : int
+        The ratio of the total samples and `fast_sub_samples`
+
+    Returns
+    -------
+    sigma : float
+        Computed standard deviation used to calculate the p-value.
+    mu : float
+        Computed mean used to calculate the p-value.
+    """
+    sigma = np.std(stat_sub) / n_samples
+    mu = max(0, np.mean(stat_sub))
+    return sigma, mu
+
+
+def _fast_pvalue(stat, sigma, mu):
+    r"""
+    Approximates the null distribution of the p-value calculation.
+
+    Parameters
+    ----------
+    stat : float
+        The calculated test statistic.
+    sigma : float
+        Computed standard deviation used to calculate the p-value.
+    mu : float
+        Computed mean used to calculate the p-value.
+
+    Returns
+    -------
+    float
+        The approximated p-value.
+    """
+    return 1 - distributions.norm.cdf(stat, mu, sigma)
 
 
 def _euclidean_dist(x):
     return cdist(x, x)
 
 
-MGCResult = namedtuple('MGCResult', ('correlation', 'pvalue', 'mgcdict'))
+MGCResult = namedtuple('MGCResult', ('stat', 'pvalue', 'mgcdict'))
 
 
-def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000):
+def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
+                         fast_sub_samples=None):
     r"""
     Computes the Multiscale Graph Correlation (MGC) test statistic, a high
     dimensional measure of independence between arbitrary data matrices.
@@ -4316,6 +4438,9 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000):
     reps : int, optional
         The number of replications used to estimate the null when using the
         permutation test. The default is 1000 repelications.
+    fast_sub_samples : int
+        Specifies the number of sub samples. Only used when calculating fast
+        MGC. Defaults to None.
 
     Returns
     -------
@@ -4333,12 +4458,6 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000):
                 The estimated optimal scale as a :math:`(x, y)` pair.
             - null_dist : list
                 The null distribution derived from the permuted matrices
-
-    Warns
-    -----
-    PermutationReplicationLow
-        Raised if the number of replications is under a 1000. At an alpha level
-        of 0.05, p-values computations may be unreliable.
 
     See Also
     --------
@@ -4410,6 +4529,7 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000):
     .. [3] Shen, C., Priebe, C.E., & Vogelstein, J.T. (2019). From distance
            correlation to multiscale graph correlation. Journal of the American
            Statistical Association.
+    .. [4] ...
 
     Examples
     --------
@@ -4463,14 +4583,35 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000):
                "caution!")
         warnings.warn(msg, RuntimeWarning)
 
+    # make sure that if fast_mgc is not empty, it contains the sub_sample
+    # keyword
+    is_fast = False
+    if fast_sub_samples is not None:
+        is_fast = True
+        # make sure that the number of sub samples is an integer > 10
+        if fast_sub_samples < 10 or not isinstance(fast_sub_samples, int):
+            raise ValueError("fast_sub_samples must be an integer greater than"
+                             " 10")
+
     # calculate MGC stat
     stat, stat_dict = _mgc_stat(x, y, compute_distance)
     stat_mgc_map = stat_dict["stat_mgc_map"]
     opt_scale = stat_dict["opt_scale"]
 
-    # calculate permutation MGC p-value
-    pvalue, null_dist = _perm_test(x, y, stat, _mgc_stat, compute_distance,
-                                   reps=reps)
+    if is_fast:
+        sigma, mu = _fast_mgc_stat(x, y, _mgc_stat, compute_distance,
+                                   fast_sub_samples)
+        pvalue = _fast_pvalue(stat, sigma, mu)
+        null_dist = None
+    else:
+        # calculate permutation MGC p-value
+        pvalue, null_dist = _perm_test(x, y, stat, _mgc_stat, compute_distance,
+                                       reps=reps)
+
+    # correct for a p_value of 0. This is because, with bootstrapping
+    # permutations, a value of 0 is incorrect
+    if pvalue == 0:
+        pvalue = 1 / reps
 
     # save all stats (other than stat/p-value) in dictionary
     mgc_dict = {"mgc_map": stat_mgc_map,
@@ -4491,8 +4632,7 @@ def _mgc_stat(x, y, compute_distance):
         matrices.
     compute_distance : callable
         A function that computes the distance or similarity among the samples
-        within each data matrix. Set to ``None`` if `x` and `y` are already
-        distance.
+        within each data matrix.
 
     Returns
     -------
