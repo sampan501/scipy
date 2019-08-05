@@ -1243,8 +1243,8 @@ time that MGC operates in. It does this by estimating the null distribution by
 subsampling the input data vectors and then fitting the distribution of test
 statistics to a normal distribution. Using this is similar to using MGC except
 that the value of `fast_sub_samples` is changed to an integer greater than 10.
-Note that while this test is much faster, it is slightly more inaccurate than
-the naive implementation when calculating p-values.
+Note that while this test much faster, it is slightly more inaccurate than the
+naive implementation when calculating p-values.
 
 Taking the same `linx` and `liny` as before, the test statistic, p-value, and
 MGC map can be calculated. This is thus:
@@ -1261,7 +1261,7 @@ MGC map can be calculated. This is thus:
    :align: center
    :include-source: 0
 
-The same can be done for `nonlinx` and `nonliny`
+The same can be done for `nonlinx` and `nonliny`:
 
     >>> stat, pvalue, mgc_dict = multiscale_graphcorr(nonlinx, nonliny,
                                                       fast_sub_samples=10)
