@@ -5142,6 +5142,15 @@ class TestMGCErrorWarnings(object):
         reps = 100
         assert_warns(RuntimeWarning, stats.multiscale_graphcorr, x, x, reps=reps)
 
+    @pytest.mark.parametrize("reps", [
+        1,     # fast_sub_samples is less than 10
+        '1',   # fast_sub_samples is not integer
+    ])
+    def test_error_fastsub(self, reps):
+        # raises error if reps is negative
+        x = np.arange(20)
+        assert_raises(ValueError, stats.multiscale_graphcorr, x, x, reps=reps)
+
 
 class TestMGCStat(object):
     """ Tests validity MGC stat.
