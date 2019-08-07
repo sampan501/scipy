@@ -4589,7 +4589,7 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
     if fast_sub_samples is not None:
         is_fast = True
         # make sure that the number of sub samples is an integer > 10
-        if fast_sub_samples < 10 or not isinstance(fast_sub_samples, int):
+        if not isinstance(fast_sub_samples, int) or fast_sub_samples < 10:
             raise ValueError("fast_sub_samples must be an integer greater than"
                              " 10")
 
