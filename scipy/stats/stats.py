@@ -164,6 +164,7 @@ References
 from __future__ import division, print_function, absolute_import
 
 import warnings
+import os
 import sys
 import math
 if sys.version_info >= (3, 5):
@@ -171,6 +172,7 @@ if sys.version_info >= (3, 5):
 else:
     from fractions import gcd
 from collections import namedtuple
+from inspect import signature
 
 import numpy as np
 from numpy import array, asarray, ma
@@ -179,7 +181,7 @@ from scipy._lib.six import callable, string_types
 from scipy.spatial.distance import cdist
 from scipy.ndimage import measurements
 from scipy._lib._version import NumpyVersion
-from scipy._lib._util import _lazywhere, MapWrapper
+from scipy._lib._util import _lazywhere, check_random_state, MapWrapper
 import scipy.special as special
 from scipy import linalg
 from . import distributions
@@ -4353,14 +4355,15 @@ class _ParallelP(object):
     """
     Helper function to calculate parallel p-value.
     """
-    def __init__(self, x, y, compute_distance):
+    def __init__(self, x, y, compute_distance, rngs):
         self.x = x
         self.y = y
         self.compute_distance = compute_distance
+        self.rngs = rngs
 
     def __call__(self, index):
-        permx = np.random.permutation(self.x)
-        permy = np.random.permutation(self.y)
+        permx = self.rngs[index].permutation(self.x)
+        permy = self.rngs[index].permutation(self.y)
 
         # calculate permuted stats, store in null distribution
         perm_stat = _mgc_stat(permx, permy, self.compute_distance)[0]
@@ -4368,7 +4371,8 @@ class _ParallelP(object):
         return perm_stat
 
 
-def _perm_test(x, y, stat, compute_distance, reps=1000, workers=-1):
+def _perm_test(x, y, stat, compute_distance, reps=1000, workers=-1,
+               r_state=None):
     r"""
     Helper function that calculates the p-value. See below for uses.
 
@@ -4391,8 +4395,12 @@ def _perm_test(x, y, stat, compute_distance, reps=1000, workers=-1):
         `multiprocessing.Pool <multiprocessing>`). Supply `-1` to use all cores
         available to the Process. Alternatively supply a map-like callable,
         such as `multiprocessing.Pool.map` for evaluating the population in
-        parallel. This evaluation is carried out as `workers(func, iterable)`.
+        parallel. This evaluation is carried out as ``workers(func, iterable)``.
         Requires that `func` be pickleable.
+    r_state : int or np.random.RandomState instance, optional
+        If already a RandomState instance, use it.
+        If seed is an int, return a new RandomState instance seeded with seed.
+        If None, use np.random.RandomState. Default is None.
 
     Returns
     -------
@@ -4401,9 +4409,16 @@ def _perm_test(x, y, stat, compute_distance, reps=1000, workers=-1):
     null_dist : list
         The approximated null distribution.
     """
-    # parallelizes with specified workers over number of reps
+    # parallelizes with specified workers over number of reps and set seed
     mapwrapper = MapWrapper(workers)
-    parallelp = _ParallelP(x=x, y=y, compute_distance=compute_distance)
+    if workers == 1:
+            rngs = [check_random_state(0)]
+        else:
+            r_state = check_random_state(random_state)
+            seeds = r_state.permutation(np.arange(reps))
+            rngs = [check_random_state(seeds[i]) for i in range(reps)]
+    parallelp = _ParallelP(x=x, y=y, compute_distance=compute_distance,
+                           rngs=rngs)
     null_dist = np.array(list(mapwrapper(parallelp, range(reps))))
 
     # calculate p-value and significant permutation map through list
@@ -4425,7 +4440,7 @@ MGCResult = namedtuple('MGCResult', ('stat', 'pvalue', 'mgc_dict'))
 
 
 def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
-                         workers=1, is_twosamp=False):
+                         workers=1, random_state=None, is_twosamp=False):
     r"""
     Computes the Multiscale Graph Correlation (MGC) test statistic.
 
@@ -4475,11 +4490,15 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
         ``multiprocessing.Pool.map`` for evaluating the p-value in parallel.
         This evaluation is carried out as ``workers(func, iterable)``.
         Requires that `func` be pickleable. The default is ``1``.
+    random_state : int or np.random.RandomState instance, optional
+        If already a RandomState instance, use it.
+        If seed is an int, return a new RandomState instance seeded with seed.
+        If None, use np.random.RandomState. Default is None.
     is_twosamp : bool, optional
-        If `True`, a two sample test will be run. If `x` and `y` have shapes
-        `(n, p)` and `(m, p)`, this optional will be overriden and set to
-        `True`. Set to `True` if `x` and `y` both have shapes `(n, p)` and
-        a two sample test is desired. The default is `False`.
+        If ``True``, a two sample test will be run. If ``x`` and ``y`` have
+        shapes ``(n, p)`` and ``(m, p)``, this optional will be overriden and
+        set to ``True``. Set to ``True`` if ``x`` and ``y`` both have shapes
+        ``(n, p)`` and a two sample test is desired. The default is ``False``.
 
     Returns
     -------
@@ -4686,7 +4705,7 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
 
     # calculate permutation MGC p-value
     pvalue, null_dist = _perm_test(x, y, stat, compute_distance, reps=reps,
-                                   workers=workers)
+                                   workers=workers, r_state=random_state)
 
     # save all stats (other than stat/p-value) in dictionary
     mgc_dict = {"mgc_map": stat_mgc_map,
