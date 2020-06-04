@@ -181,7 +181,7 @@ from .mstats_basic import _contains_nan
 from ._stats_mstats_common import (_find_repeats, linregress, theilslopes,
                                    siegelslopes)
 from ._stats import (_kendall_dis, _toint64, _weightedrankedtau,
-                     _local_correlations)
+                     _local_correlations, _cmat_at_scale)
 from ._rvs_sampling import rvs_ratio_uniforms
 from ._hypotests import epps_singleton_2samp
 
@@ -4372,7 +4372,8 @@ MGCResult = namedtuple('MGCResult', ('stat', 'pvalue', 'mgc_dict'))
 
 
 def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
-                         workers=1, is_twosamp=False, random_state=None):
+                         workers=1, is_twosamp=False, random_state=None,
+                         compute_c_mat=False):
     r"""
     Computes the Multiscale Graph Correlation (MGC) test statistic.
 
@@ -4432,6 +4433,10 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
         If already a RandomState instance, use it.
         If seed is an int, return a new RandomState instance seeded with seed.
         If None, use np.random.RandomState. Default is None.
+    compute_c_mat : bool, optional
+        If `True`, the element-wise product of the `x` and `y` distance
+        matrices is computed at the optimal `k,l` scale. The normalized sum of
+        this matrix is the distance correlation at that `k,l` scale.
 
     Returns
     -------
@@ -4450,6 +4455,9 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
                 The estimated optimal scale as a `(x, y)` pair.
             - null_dist : list
                 The null distribution derived from the permuted matrices
+            - c_mat : ndarray
+                The elementwise product of the `X,Y` distance matrices at the
+                optimal `k,l` scale. Computed if `compute_c_mat=True`.
 
     See Also
     --------
@@ -4649,6 +4657,9 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
     mgc_dict = {"mgc_map": stat_mgc_map,
                 "opt_scale": opt_scale,
                 "null_dist": null_dist}
+
+    if compute_c_mat:
+        mgc_dict['c_mat'] = _cmat_at_scale(x, y, *opt_scale)
 
     return MGCResult(stat, pvalue, mgc_dict)
 

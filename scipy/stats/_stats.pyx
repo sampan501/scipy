@@ -482,6 +482,18 @@ def _local_correlations(distx, disty, global_corr='mgc'):
     return corr_mat
 
 
+@cython.wraparound(False)
+@cython.boundscheck(False)
+def _cmat_at_scale(distx, disty, k, l, global_corr='mgc'):
+    transformed = _transform_distance_matrix(distx, disty, global_corr)
+
+    # compute hadamard product of X and Y distances at the given k,l scale
+    cmat = transformed["cent_distx"] * (transformed["rank_distx"] <= k)
+    cmat *= transformed["cent_disty"] * (transformed["rank_disty"] <= l)
+
+    return cmat
+
+
 cpdef double geninvgauss_logpdf(double x, double p, double b) nogil:
     return _geninvgauss_logpdf_kernel(x, p, b)
 
