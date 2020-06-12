@@ -489,7 +489,7 @@ def _cmat_at_scale(distx, disty, k, l, global_corr='mgc'):
 
     # compute hadamard product of X and Y distances at the given k,l scale
     cmat = transformed["cent_distx"] * (transformed["rank_distx"] <= k)
-    cmat *= transformed["cent_disty"] * (transformed["rank_disty"] <= l)
+    cmat *= transformed["cent_disty"].T * (transformed["rank_disty"].T <= l)
 
     return cmat
 
