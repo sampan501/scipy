@@ -164,7 +164,7 @@ References
 import warnings
 import math
 from math import gcd
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 
 import numpy as np
 from numpy import array, asarray, ma
@@ -181,7 +181,7 @@ from .mstats_basic import _contains_nan
 from ._stats_mstats_common import (_find_repeats, linregress, theilslopes,
                                    siegelslopes)
 from ._stats import (_kendall_dis, _toint64, _weightedrankedtau,
-                     _local_correlations, _cmat_at_scale)
+                     _local_correlations, _abc_mats_at_scale)
 from ._rvs_sampling import rvs_ratio_uniforms
 from ._hypotests import epps_singleton_2samp
 
@@ -4294,14 +4294,25 @@ class _ParallelP(object):
     """
     Helper function to calculate parallel p-value.
     """
-    def __init__(self, x, y, random_states):
+    def __init__(self, x, y, random_states, y_groups=None, compute_distance=None):
         self.x = x
         self.y = y
         self.random_states = random_states
+        self.y_groups = y_groups
+        if y_groups is not None:
+            self.d = defaultdict(list)
+            for key, val in zip(y_groups, y):
+                self.d[key].append(val)
+        self.compute_distance = compute_distance
 
     def __call__(self, index):
-        order = self.random_states[index].permutation(self.y.shape[0])
-        permy = self.y[order][:, order]
+        if self.compute_distance is None:
+            y = compute_distance(y)
+            order = self.random_states[index].permutation(self.y.shape[0])
+            permy = self.y[order][:, order]
+        else:
+            order = self.random_states[index].permutation(len(self.d.keys()))
+            perm_groups = list(self.d.keys())[order]
 
         # calculate permuted stats, store in null distribution
         perm_stat = _mgc_stat(self.x, permy)[0]
@@ -4309,7 +4320,7 @@ class _ParallelP(object):
         return perm_stat
 
 
-def _perm_test(x, y, stat, reps=1000, workers=-1, random_state=None):
+def _perm_test(x, y, stat, reps=1000, workers=-1, random_state=None, y_groups=None):
     r"""
     Helper function that calculates the p-value. See below for uses.
 
@@ -4350,7 +4361,7 @@ def _perm_test(x, y, stat, reps=1000, workers=-1, random_state=None):
 
     # parallelizes with specified workers over number of reps and set seeds
     mapwrapper = MapWrapper(workers)
-    parallelp = _ParallelP(x=x, y=y, random_states=random_states)
+    parallelp = _ParallelP(x=x, y=y, random_states=random_states, y_groups=y_groups)
     null_dist = np.array(list(mapwrapper(parallelp, range(reps))))
 
     # calculate p-value and significant permutation map through list
@@ -4371,7 +4382,7 @@ def _euclidean_dist(x):
 MGCResult = namedtuple('MGCResult', ('stat', 'pvalue', 'mgc_dict'))
 
 
-def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
+def multiscale_graphcorr(x, y, y_groups=None, compute_distance=_euclidean_dist, reps=1000,
                          workers=1, is_twosamp=False, random_state=None,
                          compute_c_mat=False):
     r"""
@@ -4434,9 +4445,9 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
         If seed is an int, return a new RandomState instance seeded with seed.
         If None, use np.random.RandomState. Default is None.
     compute_c_mat : bool, optional
-        If `True`, the element-wise product of the `x` and `y` distance
-        matrices is computed at the optimal `k,l` scale. The normalized sum of
-        this matrix is the distance correlation at that `k,l` scale.
+        If `True`, the `x` and `y` distance matrices at the optimal `k,l` scale
+        are returned as well as their element-wise product. The normalized sum
+        of this matrix is the distance correlation at that `k,l` scale.
 
     Returns
     -------
@@ -4638,8 +4649,12 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
         if compute_distance is None:
             raise ValueError("Cannot run if inputs are distance matrices")
         x, y = _two_sample_transform(x, y)
+    
+    if compute_distance is None and y_groups is not None:
+        raise ValueError("Cannot use precomputed distances with y_groups")
 
     if compute_distance is not None:
+        y0 = y.copy()
         # compute distance matrices for x and y
         x = compute_distance(x)
         y = compute_distance(y)
@@ -4649,9 +4664,13 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
     stat_mgc_map = stat_dict["stat_mgc_map"]
     opt_scale = stat_dict["opt_scale"]
 
+    if y_groups is not None:
+        y = y0
+    else:
+        compute_distance = None
     # calculate permutation MGC p-value
     pvalue, null_dist = _perm_test(x, y, stat, reps=reps, workers=workers,
-                                   random_state=random_state)
+                                   random_state=random_state, y_groups=y_groups, compute_distance=compute_distance)
 
     # save all stats (other than stat/p-value) in dictionary
     mgc_dict = {"mgc_map": stat_mgc_map,
@@ -4659,7 +4678,10 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
                 "null_dist": null_dist}
 
     if compute_c_mat:
-        mgc_dict['c_mat'] = _cmat_at_scale(x, y, *opt_scale)
+         a_mat, b_mat, c_mat = _abc_mats_at_scale(x, y, *opt_scale)
+         mgc_dict['a_mat'] = a_mat
+         mgc_dict['b_mat'] = b_mat
+         mgc_dict['c_mat'] = c_mat
 
     return MGCResult(stat, pvalue, mgc_dict)
 

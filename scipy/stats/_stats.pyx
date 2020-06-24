@@ -484,14 +484,24 @@ def _local_correlations(distx, disty, global_corr='mgc'):
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-def _cmat_at_scale(distx, disty, k, l, global_corr='mgc'):
-    transformed = _transform_distance_matrix(distx, disty, global_corr)
+def _abc_mats_at_scale(distx, disty, k, l, global_corr='mgc'):
+    is_ranked=False
+    # Distmat symmetric, col_center = row_center
+    cent_distx_row, _ = _center_distance_matrix(distx, global_corr, is_ranked)
+    cent_disty_row, _ = _center_distance_matrix(disty, global_corr, is_ranked)
+    # = distx - (distx - cent_distx_row) - (distx - cent_distx_row).T
+    cent_distx = cent_distx_row - (distx - cent_distx_row).T
+    cent_disty = cent_disty_row - (disty - cent_disty_row).T
+    
+    rank_distx = _rank_distance_matrix(cent_distx)
+    rank_disty = _rank_distance_matrix(cent_disty)
 
     # compute hadamard product of X and Y distances at the given k,l scale
-    cmat = transformed["cent_distx"] * (transformed["rank_distx"] <= k)
-    cmat *= transformed["cent_disty"].T * (transformed["rank_disty"].T <= l)
+    a_mat = cent_distx * (rank_distx <= k)
+    b_mat = cent_disty * (rank_disty <= l)
+    c_mat = a_mat * b_mat
 
-    return cmat
+    return a_mat, b_mat, c_mat
 
 
 cpdef double geninvgauss_logpdf(double x, double p, double b) nogil:
