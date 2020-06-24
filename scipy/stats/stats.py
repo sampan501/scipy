@@ -4643,7 +4643,7 @@ def multiscale_graphcorr(x, y, compute_distance=_euclidean_dist, reps=1000,
         # compute distance matrices for x and y
         x = compute_distance(x)
         y = compute_distance(y)
-
+            
     # calculate MGC stat
     stat, stat_dict = _mgc_stat(x, y)
     stat_mgc_map = stat_dict["stat_mgc_map"]
