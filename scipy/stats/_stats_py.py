@@ -33,6 +33,7 @@ from collections import namedtuple
 
 import numpy as np
 from numpy import array, asarray, ma
+from numpy.lib import NumpyVersion
 
 from scipy.spatial.distance import cdist
 from scipy.ndimage import _measurements
@@ -55,7 +56,7 @@ from ._axis_nan_policy import (_axis_nan_policy_factory,
 
 # Functions/classes in other files should be added in `__init__.py`, not here
 __all__ = ['find_repeats', 'gmean', 'hmean', 'mode', 'tmean', 'tvar',
-           'tmin', 'tmax', 'tstd', 'tsem', 'moment', 'variation',
+           'tmin', 'tmax', 'tstd', 'tsem', 'moment',
            'skew', 'kurtosis', 'describe', 'skewtest', 'kurtosistest',
            'normaltest', 'jarque_bera', 'itemfreq',
            'scoreatpercentile', 'percentileofscore',
@@ -963,65 +964,6 @@ def _moment(a, moment, axis, *, mean=None):
             if n % 2:
                 s *= a_zero_mean
         return np.mean(s, axis)
-
-
-def variation(a, axis=0, nan_policy='propagate', ddof=0):
-    """Compute the coefficient of variation.
-
-    The coefficient of variation is the standard deviation divided by the
-    mean.  This function is equivalent to::
-
-        np.std(x, axis=axis, ddof=ddof) / np.mean(x)
-
-    The default for ``ddof`` is 0, but many definitions of the coefficient
-    of variation use the square root of the unbiased sample variance
-    for the sample standard deviation, which corresponds to ``ddof=1``.
-
-    Parameters
-    ----------
-    a : array_like
-        Input array.
-    axis : int or None, optional
-        Axis along which to calculate the coefficient of variation. Default
-        is 0. If None, compute over the whole array `a`.
-    nan_policy : {'propagate', 'raise', 'omit'}, optional
-        Defines how to handle when input contains nan.
-        The following options are available (default is 'propagate'):
-
-        * 'propagate': returns nan
-        * 'raise': throws an error
-        * 'omit': performs the calculations ignoring nan values
-
-    ddof : int, optional
-        Delta degrees of freedom.  Default is 0.
-
-    Returns
-    -------
-    variation : ndarray
-        The calculated variation along the requested axis.
-
-    References
-    ----------
-    .. [1] Zwillinger, D. and Kokoska, S. (2000). CRC Standard
-       Probability and Statistics Tables and Formulae. Chapman & Hall: New
-       York. 2000.
-
-    Examples
-    --------
-    >>> from scipy.stats import variation
-    >>> variation([1, 2, 3, 4, 5])
-    0.47140452079103173
-
-    """
-    a, axis = _chk_asarray(a, axis)
-
-    contains_nan, nan_policy = _contains_nan(a, nan_policy)
-
-    if contains_nan and nan_policy == 'omit':
-        a = ma.masked_invalid(a)
-        return mstats_basic.variation(a, axis, ddof)
-
-    return a.std(axis, ddof=ddof) / a.mean(axis)
 
 
 def skew(a, axis=0, bias=True, nan_policy='propagate'):
@@ -2803,18 +2745,18 @@ def iqr(x, axis=None, rng=(25, 75), scale=1.0, nan_policy='propagate',
     rng : Two-element sequence containing floats in range of [0,100] optional
         Percentiles over which to compute the range. Each must be
         between 0 and 100, inclusive. The default is the true IQR:
-        `(25, 75)`. The order of the elements is not important.
+        ``(25, 75)``. The order of the elements is not important.
     scale : scalar or str, optional
         The numerical value of scale will be divided out of the final
         result. The following string values are recognized:
 
           * 'raw' : No scaling, just return the raw IQR.
-            **Deprecated!**  Use `scale=1` instead.
+            **Deprecated!**  Use ``scale=1`` instead.
           * 'normal' : Scale by
             :math:`2 \sqrt{2} erf^{-1}(\frac{1}{2}) \approx 1.349`.
 
-        The default is 1.0. The use of scale='raw' is deprecated.
-        Array-like scale is also allowed, as long
+        The default is 1.0. The use of ``scale='raw'`` is deprecated.
+        Array-like `scale` is also allowed, as long
         as it broadcasts correctly to the output such that
         ``out / scale`` is a valid operation. The output dimensions
         depend on the input array, `x`, the `axis` argument, and the
@@ -2826,22 +2768,24 @@ def iqr(x, axis=None, rng=(25, 75), scale=1.0, nan_policy='propagate',
           * 'propagate': returns nan
           * 'raise': throws an error
           * 'omit': performs the calculations ignoring nan values
-    interpolation : {'linear', 'lower', 'higher', 'midpoint',
-                     'nearest'}, optional
+    interpolation : str, optional
 
         Specifies the interpolation method to use when the percentile
-        boundaries lie between two data points `i` and `j`.
+        boundaries lie between two data points ``i`` and ``j``.
         The following options are available (default is 'linear'):
 
-          * 'linear': `i + (j - i) * fraction`, where `fraction` is the
-            fractional part of the index surrounded by `i` and `j`.
-          * 'lower': `i`.
-          * 'higher': `j`.
-          * 'nearest': `i` or `j` whichever is nearest.
-          * 'midpoint': `(i + j) / 2`.
+          * 'linear': ``i + (j - i)*fraction``, where ``fraction`` is the
+            fractional part of the index surrounded by ``i`` and ``j``.
+          * 'lower': ``i``.
+          * 'higher': ``j``.
+          * 'nearest': ``i`` or ``j`` whichever is nearest.
+          * 'midpoint': ``(i + j)/2``.
+
+        For NumPy >= 1.22.0, the additional options provided by the ``method``
+        keyword of `numpy.percentile` are also valid.
 
     keepdims : bool, optional
-        If this is set to `True`, the reduced axes are left in the
+        If this is set to True, the reduced axes are left in the
         result as dimensions with size one. With this option, the result
         will broadcast correctly against the original array `x`.
 
@@ -2856,27 +2800,6 @@ def iqr(x, axis=None, rng=(25, 75), scale=1.0, nan_policy='propagate',
     See Also
     --------
     numpy.std, numpy.var
-
-    Notes
-    -----
-    This function is heavily dependent on the version of `numpy` that is
-    installed. Versions greater than 1.11.0b3 are highly recommended, as they
-    include a number of enhancements and fixes to `numpy.percentile` and
-    `numpy.nanpercentile` that affect the operation of this function. The
-    following modifications apply:
-
-    Below 1.10.0 : `nan_policy` is poorly defined.
-        The default behavior of `numpy.percentile` is used for 'propagate'. This
-        is a hybrid of 'omit' and 'propagate' that mostly yields a skewed
-        version of 'omit' since NaNs are sorted to the end of the data. A
-        warning is raised if there are NaNs in the data.
-    Below 1.9.0: `numpy.nanpercentile` does not exist.
-        This means that `numpy.percentile` is used regardless of `nan_policy`
-        and a warning is issued. See previous item for a description of the
-        behavior.
-    Below 1.9.0: `keepdims` and `interpolation` are not supported.
-        The keywords get ignored with a warning if supplied with non-default
-        values. However, multiple axes are still supported.
 
     References
     ----------
@@ -2937,8 +2860,12 @@ def iqr(x, axis=None, rng=(25, 75), scale=1.0, nan_policy='propagate',
         raise ValueError("range must not contain NaNs")
 
     rng = sorted(rng)
-    pct = percentile_func(x, rng, axis=axis, interpolation=interpolation,
-                          keepdims=keepdims)
+    if NumpyVersion(np.__version__) >= '1.22.0':
+        pct = percentile_func(x, rng, axis=axis, method=interpolation,
+                              keepdims=keepdims)
+    else:
+        pct = percentile_func(x, rng, axis=axis, interpolation=interpolation,
+                              keepdims=keepdims)
     out = np.subtract(pct[1], pct[0])
 
     if scale != 1.0:
