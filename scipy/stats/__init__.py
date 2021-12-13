@@ -271,6 +271,7 @@ Correlation functions
    siegelslopes
    theilslopes
    multiscale_graphcorr
+   distance_correlation
 
 Statistical tests
 =================

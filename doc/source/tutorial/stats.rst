@@ -1215,6 +1215,105 @@ The MGC-map indicates a **strongly nonlinear relationship**. The optimal scale
 in this case is **equivalent to the local scale**, marked by a red spot on the
 map.
 
+Distance Correlation (Dcorr)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With :func:`~stats.distance_correlation`, we can test for independence on high
+dimensional and nonlinear data. Before we start, let's import some useful
+packages:
+
+    >>> import numpy as np
+    >>> import matplotlib.pyplot as plt; plt.style.use('classic')
+    >>> from scipy.stats import distance_correlation
+
+Let's use a custom plotting function to plot the data relationship:
+
+    >>> def dcorr_plot(x, y, sim_name):
+    ...     """Plot sim"""
+    ...     # simulation
+    ...     plt.figure(figsize=(8, 8))
+    ...     ax = plt.gca()
+    ...     ax.set_title(sim_name + " Simulation", fontsize=20)
+    ...     ax.scatter(x, y)
+    ...     ax.set_xlabel('X', fontsize=15)
+    ...     ax.set_ylabel('Y', fontsize=15)
+    ...     ax.axis('equal')
+    ...     ax.tick_params(axis="x", labelsize=15)
+    ...     ax.tick_params(axis="y", labelsize=15)
+    ...     plt.show()
+
+Let's look at some linear data first:
+
+    >>> rng = np.random.default_rng()
+    >>> x = np.linspace(-1, 1, num=100)
+    >>> y = x + 0.3 * rng.random(x.size)
+
+The simulation relationship can be plotted below:
+
+    >>> dcorr_plot(x, y, "Linear")
+
+Now, we can see the test statistic and p-value visualized below:
+
+    >>> stat, pvalue = distance_correlation(x, y)
+    >>> print("Dcorr test statistic: ", round(stat, 1))
+    Dcorr test statistic:  1.0
+    >>> print("P-value: ", round(pvalue, 1))
+    P-value:  0.0   
+
+It is clear from here, that Dcorr is able to determine a relationship between the
+input data matrices because the p-value is very low and the Dcorr test statistic
+is relatively high. 
+
+The same can be done for nonlinear data sets. The following :math:`x` and
+:math:`y` arrays are derived from a nonlinear simulation:
+
+    >>> unif = np.array(rng.uniform(0, 5, size=100))
+    >>> x = unif * np.cos(np.pi * unif)
+    >>> y = unif * np.sin(np.pi * unif) + 0.4 * rng.random(x.size)
+    
+The simulation relationship can be plotted below:
+
+    >>> dcorr_plot(x, y, "Spiral")
+      
+Now, we can see the test statistic and p-value:
+    
+    >>> stat, pvalue = distance_correlation(x, y)
+    >>> print("Dcorr test statistic: ", round(stat, 1))
+    Dcorr test statistic:  0.2  # random
+    >>> print("P-value: ", round(pvalue, 1))
+    P-value:  0.0
+    
+It is clear from here, that Dcorr is able to determine a relationship between the
+input data matrices because the p-value is very low and the Dcorr test statistic
+is relatively high. 
+
+The same can be done for independent data sets. The following :math:`x` and
+:math:`y` arrays are derived from a independence simulation:
+
+    >>> samps = 100
+    >>> u = rng.normal(0, 1, size=(samps, 1))
+    >>> v = rng.normal(0, 1, size=(samps, 1))
+    >>> u_2 = rng.binomial(1, p=0.5, size=(samps, 1))
+    >>> v_2 = rng.binomial(1, p=0.5, size=(samps, 1))
+    >>> x = u/3 + 2*u_2 - 1
+    >>> y = v/3 + 2*v_2 - 1
+    
+The simulation relationship can be plotted below:
+
+    >>> dcorr_plot(x, y, "Multimodal Independence")
+      
+Now, we can see the test statistic and p-value:
+    
+    >>> stat, pvalue = distance_correlation(x, y)
+    >>> print("Dcorr test statistic: ", round(stat, 1))
+    Dcorr test statistic:  -0.0
+    >>> print("P-value: ", round(pvalue, 1))
+    P-value:  0.9 #random 
+    
+This section here is the null case. It is clear from here, that Dcorr is not able to determine a relationship between the
+input data matrices because the p-value is very high and the Dcorr test statistic
+is relatively low. This makes sense as the data is independent. 
+
 .. _quasi-monte-carlo:
 
 Quasi-Monte Carlo
